@@ -1,0 +1,131 @@
+/* Import CSS cho DatePicker */
+@import 'react-datepicker/dist/react-datepicker.css';
+
+.attendance-container {
+    max-width: 1200px;
+}
+
+/* Khu vực Lọc và Nút bấm */
+.filter-controls {
+    display: flex;
+    flex-wrap: wrap; /* Cho phép xuống dòng trên di động */
+    align-items: flex-end;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    background-color: #fff;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+/* CSS cho DatePicker */
+.react-datepicker-wrapper input {
+    width: 150px; /* Độ rộng ô input */
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+/* Các nút bấm */
+.action-button {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-fetch {
+    background-color: #007bff;
+    color: white;
+}
+.btn-fetch:hover { background-color: #0056b3; }
+
+.btn-process {
+    background-color: #28a745;
+    color: white;
+}
+.btn-process:hover { background-color: #218838; }
+
+.btn-export {
+    background-color: #17a2b8;
+    color: white;
+    margin-left: auto; /* Đẩy nút Export sang phải */
+}
+.btn-export:hover { background-color: #117a8b; }
+
+/* Bảng dữ liệu (Tái sử dụng CSS từ EmployeePage) */
+.data-table-section {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+.data-table-section h3 {
+    margin: 0;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+    padding: 1rem 1.5rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.data-table th {
+    background-color: #f7f7f7;
+}
+
+.data-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Các thông báo */
+.success-message {
+    color: #155724;
+    margin-top: 1rem;
+}
+
+.error-message {
+    color: #dc3545;
+    margin-top: 1rem;
+}
+/* --- THÊM CSS MỚI CHO HÀNG LỌC --- */
+
+.filter-row td {
+    background-color: #f8f9fa;
+    padding: 0.5rem 1rem;
+    border-bottom: 2px solid #dee2e6; /* Đường viền đậm hơn */
+}
+
+.filter-row input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Quan trọng */
+    font-size: 0.9rem;
+}
+/* --- KẾT THÚC CSS MỚI --- */

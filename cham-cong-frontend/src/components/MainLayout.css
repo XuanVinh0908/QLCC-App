@@ -1,0 +1,67 @@
+.app-container {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 250px;
+    background-color: #2c3e50;
+    color: white;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column; /* Sắp xếp các mục theo chiều dọc */
+}
+
+.sidebar-title {
+    text-align: center;
+    border-bottom: 1px solid #4a627a;
+    padding-bottom: 1rem;
+    margin-top: 0;
+}
+
+.nav-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex-grow: 1; /* Đẩy nút Logout xuống dưới */
+}
+
+.nav-item {
+    margin-bottom: 1rem;
+}
+
+.nav-item a {
+    text-decoration: none;
+    color: #ecf0f1;
+    font-size: 1.1rem;
+    padding: 10px 15px;
+    display: block;
+    border-radius: 5px;
+    transition: background-color 0.2s;
+}
+
+.nav-item a:hover,
+.nav-item a.active { /* (Sẽ dùng sau) */
+    background-color: #34495e;
+}
+
+.logout-button {
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    background-color: #e74c3c;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+    margin-top: auto; /* Tự động đẩy nút xuống cuối */
+}
+
+.logout-button:hover {
+    background-color: #c0392b;
+}
+
+.main-content {
+    flex-grow: 1; /* Chiếm hết phần còn lại */
+    padding: 2rem;
+    background-color: #f4f7f6;
+}

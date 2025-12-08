@@ -1,0 +1,78 @@
+.employee-page-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+/* Chia layout 2 cột trên màn hình lớn */
+@media (min-width: 1200px) {
+    .employee-page-container {
+        grid-template-columns: 3fr 1fr; /* Bảng 75%, Form 25% */
+    }
+}
+
+.employee-list-section {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.employee-list-section h3 {
+    margin: 0;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.employee-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.employee-table th,
+.employee-table td {
+    padding: 1rem 1.5rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.employee-table th {
+    background-color: #f7f7f7;
+}
+
+.employee-table tr:last-child td {
+    border-bottom: none;
+}
+
+.action-buttons button {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 5px;
+}
+
+.btn-edit {
+    background-color: #ffc107;
+    color: #333;
+}
+.btn-remove {
+    background-color: #dc3545;
+    color: white;
+}
+
+.employee-forms-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* Dùng lại CSS từ AdminForms cho form thêm mới */
+.admin-form-section {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 0; /* Ghi đè CSS cũ */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}

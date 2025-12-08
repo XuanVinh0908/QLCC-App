@@ -1,0 +1,10 @@
+# Bỏ qua thư viện
+node_modules/
+
+# Bỏ qua file build/dist
+dist/
+build/
+
+# Bỏ qua file môi trường
+.env
+.DS_Store
