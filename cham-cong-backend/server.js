@@ -12,12 +12,17 @@ const employeeRoutes = require('./routes/employees.js');
 const activityRoutes = require('./routes/activity.js'); // <-- 1. IMPORT FILE MỚI
 
 // Khởi tạo app
+// --- 1. IMPORT ROUTE TABLET MỚI ---
+const tabletRoutes = require('./routes/tablet.js');
 const app = express();
 const port = 5000;
 
 // Sử dụng middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Tăng limit để an toàn
+//dashboard route
+const dashboardRoutes = require('./routes/dashboard.js');
+app.use('/api/dashboard', dashboardRoutes);
 
 // ------------------------------------
 // ĐỊNH TUYẾN (ROUTING)
@@ -29,7 +34,8 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/activity', activityRoutes); // <-- 2. SỬ DỤNG ROUTE MỚI
-
+// --- 2. SỬ DỤNG ROUTE TABLET (Gắn vào root) ---
+app.use('/', tabletRoutes);
 // API "Hello World"
 app.get('/', async (req, res) => {
     try {

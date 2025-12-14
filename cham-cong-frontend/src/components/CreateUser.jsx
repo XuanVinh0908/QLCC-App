@@ -1,143 +1,192 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import './AdminForms.css';
 
-function CreateUser() {
-    // State cho form
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [roleID, setRoleID] = useState(2); // Mặc định là 'User' (ID=2)
-    const [userGroupID, setUserGroupID] = useState('');
+const CreateUser = () => {
+    // 1. State quản lý Form
+    const [formData, setFormData] = useState({
+        username: '',
+        password: '',
+        roleID: 2,      // Mặc định là User (ID=2)
+        userGroupID: '' // Sẽ được tự động điền khi tải danh sách nhóm
+    });
 
-    // State để chứa danh sách nhóm
-    const [groups, setGroups] = useState([]); 
+    // 2. State danh sách nhóm (KHÔI PHỤC TỪ CODE CŨ)
+    const [groups, setGroups] = useState([]);
 
-    // State cho thông báo
-    const [message, setMessage] = useState('');
-    const [error, setError] = useState('');
+    const [message, setMessage] = useState({ type: '', content: '' });
+    const [isLoading, setIsLoading] = useState(false);
 
-    // Tự động gọi API lấy danh sách nhóm khi component được tải
+    // 3. useEffect lấy danh sách nhóm khi trang vừa tải (KHÔI PHỤC TỪ CODE CŨ)
     useEffect(() => {
         const fetchGroups = async () => {
             const token = localStorage.getItem('token');
             try {
-                const response = await axios.get(
-                    '/api/groups',
-                    { headers: { 'Authorization': `Bearer ${token}` } }
-                );
+                const response = await axios.get('/api/groups', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                
                 setGroups(response.data);
-                // Tự động chọn nhóm đầu tiên nếu có
+
+                // Logic cũ: Tự động chọn nhóm đầu tiên nếu có
                 if (response.data.length > 0) {
-                    setUserGroupID(response.data[0].UserGroupID);
+                    setFormData(prev => ({
+                        ...prev,
+                        userGroupID: response.data[0].UserGroupID
+                    }));
                 }
             } catch (err) {
-                console.error('Lỗi không thể tải danh sách nhóm:', err);
-                setError('Lỗi: Không thể tải danh sách nhóm.');
+                console.error('Lỗi tải danh sách nhóm:', err);
+                setMessage({ type: 'warning', content: 'Không thể tải danh sách phòng ban.' });
             }
         };
         fetchGroups();
-    }, []); // Mảng rỗng [] nghĩa là chỉ chạy 1 lần lúc tải
+    }, []);
 
-    // Xử lý khi bấm nút Tạo
+    // Xử lý nhập liệu
+    const handleChange = (e) => {
+        setFormData({
+            ...formData,
+            [e.target.name]: e.target.value
+        });
+    };
+
+    // Xử lý Submit
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setMessage('');
-        setError('');
+        setIsLoading(true);
+        setMessage({ type: '', content: '' });
 
-        if (!username || !password || !roleID || !userGroupID) {
-            setError('Vui lòng điền đầy đủ thông tin');
+        // Validate cơ bản
+        if (!formData.username || !formData.password || !formData.userGroupID) {
+            setMessage({ type: 'danger', content: 'Vui lòng điền đủ thông tin và chọn nhóm.' });
+            setIsLoading(false);
             return;
         }
 
-        const token = localStorage.getItem('token');
         try {
-            const response = await axios.post(
-                '/api/auth/register',
-                { username, password, roleID, userGroupID },
-                { headers: { 'Authorization': `Bearer ${token}` } }
-            );
+            const token = localStorage.getItem('token');
+            const response = await axios.post('/api/auth/register', formData, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
 
-            setMessage(`Tạo tài khoản thành công: ${response.data.username}`);
-            // Xóa form
-            setUsername('');
-            setPassword('');
+            setMessage({ type: 'success', content: `Tạo thành công tài khoản: ${response.data.username}` });
+            
+            // Reset form nhưng giữ lại role và group mặc định để tạo tiếp cho nhanh
+            setFormData(prev => ({
+                ...prev,
+                username: '',
+                password: ''
+            }));
 
         } catch (err) {
-            console.error(err);
-            if (err.response && err.response.data.message) {
-                setError(err.response.data.message);
-            } else {
-                setError('Lỗi server, không thể tạo tài khoản');
-            }
+            console.error("Lỗi tạo user:", err);
+            const errorMsg = err.response?.data?.message || 'Lỗi server, vui lòng thử lại';
+            setMessage({ type: 'danger', content: errorMsg });
+        } finally {
+            setIsLoading(false);
         }
     };
 
     return (
-        <div className="admin-form-section">
-            <h3>Tạo Tài khoản người dùng mới</h3>
-            <form onSubmit={handleSubmit}>
-                {/* Username */}
-                <div className="form-group">
-                    <label htmlFor="username">Tên đăng nhập</label>
-                    <input
-                        type="text"
-                        id="username"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        required
-                    />
-                </div>
-                {/* Password */}
-                <div className="form-group">
-                    <label htmlFor="password">Mật khẩu</label>
-                    <input
-                        type="password"
-                        id="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                    />
-                </div>
-                {/* Role */}
-                <div className="form-group">
-                    <label htmlFor="role">Phân loại tài khoản</label>
-                    <select 
-                        id="role" 
-                        value={roleID} 
-                        onChange={(e) => setRoleID(e.target.value)}
-                    >
-                        <option value={1}>Admin</option>
-                        <option value={2}>User (Quản lý)</option>
-                    </select>
-                </div>
-                {/* Group */}
-                <div className="form-group">
-                    <label htmlFor="group">Gán vào Nhóm/Tổ chức</label>
-                    <select 
-                        id="group" 
-                        value={userGroupID} 
-                        onChange={(e) => setUserGroupID(e.target.value)}
-                        required
-                    >
-                        <option value="" disabled>-- Chọn một nhóm --</option>
-                        {groups.map(group => (
-                            <option 
-                                key={group.UserGroupID} 
-                                value={group.UserGroupID}
+        <div className="card shadow-sm border-0 rounded-4">
+            <div className="card-header bg-primary text-white fw-bold py-3">
+                <i className="bi bi-person-plus-fill me-2"></i> Cấp tài khoản mới
+            </div>
+            <div className="card-body p-4">
+                {message.content && (
+                    <div className={`alert alert-${message.type} small shadow-sm`}>
+                        {message.content}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit}>
+                    {/* Username */}
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-secondary">Tên đăng nhập</label>
+                        <div className="input-group">
+                            <span className="input-group-text bg-light"><i className="bi bi-person"></i></span>
+                            <input 
+                                type="text" 
+                                className="form-control" 
+                                name="username"
+                                value={formData.username}
+                                onChange={handleChange}
+                                required 
+                                placeholder="VD: nguyen_van_a"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Password */}
+                    <div className="mb-3">
+                        <label className="form-label fw-bold small text-secondary">Mật khẩu</label>
+                        <div className="input-group">
+                            <span className="input-group-text bg-light"><i className="bi bi-key"></i></span>
+                            <input 
+                                type="password" 
+                                className="form-control" 
+                                name="password"
+                                value={formData.password}
+                                onChange={handleChange}
+                                required 
+                                placeholder="******"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="row">
+                        {/* Role Select */}
+                        <div className="col-md-6 mb-3">
+                            <label className="form-label fw-bold small text-secondary">Phân loại tài khoản</label>
+                            <select 
+                                className="form-select"
+                                name="roleID"
+                                value={formData.roleID}
+                                onChange={handleChange}
                             >
-                                {group.GroupName}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                                <option value={1}>Admin (Quản trị)</option>
+                                <option value={2}>User (Nhân viên/Quản lý)</option>
+                            </select>
+                        </div>
 
-                <button type="submit" className="admin-button">Tạo tài khoản</button>
+                        {/* Group Select (KHÔI PHỤC TÍNH NĂNG CHỌN NHÓM) */}
+                        <div className="col-md-6 mb-3">
+                            <label className="form-label fw-bold small text-secondary">Thuộc Nhóm/Tổ chức</label>
+                            <select 
+                                className="form-select"
+                                name="userGroupID"
+                                value={formData.userGroupID}
+                                onChange={handleChange}
+                                required
+                            >
+                                <option value="" disabled>-- Chọn phòng ban --</option>
+                                {groups.map(group => (
+                                    <option key={group.UserGroupID} value={group.UserGroupID}>
+                                        {group.GroupName}
+                                    </option>
+                                ))}
+                            </select>
+                            {groups.length === 0 && (
+                                <div className="form-text text-danger" style={{fontSize: '11px'}}>
+                                    * Chưa tải được danh sách nhóm
+                                </div>
+                            )}
+                        </div>
+                    </div>
 
-                {message && <p className="success-message">{message}</p>}
-                {error && <p className="error-message">{error}</p>}
-            </form>
+                    <div className="d-grid mt-2">
+                        <button type="submit" className="btn btn-primary fw-bold py-2 shadow-sm" disabled={isLoading}>
+                            {isLoading ? (
+                                <span><i className="spinner-border spinner-border-sm me-2"></i>Đang xử lý...</span>
+                            ) : (
+                                <span><i className="bi bi-check-circle-fill me-2"></i>Tạo tài khoản</span>
+                            )}
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     );
-}
+};
 
 export default CreateUser;

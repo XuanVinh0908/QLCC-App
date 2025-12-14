@@ -1,19 +1,25 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-// Import các trang
+// --- 1. QUAN TRỌNG: Thêm Import Bootstrap để giao diện KHÔNG BỊ VỠ ---
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'bootstrap-icons/font/bootstrap-icons.css';
+
+// Import các trang (Giữ nguyên theo file bạn gửi)
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
+import Dashboard from './pages/Dashboard'; 
 import AttendancePage from './pages/AttendancePage';
 import AdminPage from './pages/AdminPage';
 import ImportPage from './pages/ImportPage';
 import EmployeePage from './pages/EmployeePage';
 import GroupPage from './pages/GroupPage';
-import ActivityLogPage from './pages/ActivityLogPage'; // <-- Đảm bảo dòng này tồn tại
+import ActivityLogPage from './pages/ActivityLogPage';
 
-// Import Layout
+// Import Layout & Auth Context
 import MainLayout from './components/MainLayout';
+import { AuthProvider } from './hooks/useAuth'; // Cần cái này để MainLayout biết ai là Admin
 
+// Giữ nguyên logic bảo vệ Router của bạn
 function ProtectedRoute({ children }) {
     const token = localStorage.getItem('token');
     return token ? children : <Navigate to="/login" replace />;
@@ -26,40 +32,47 @@ function GuestRoute({ children }) {
 
 function App() {
     return (
-        <Routes>
-            {/* Tuyến đường cho khách (chưa đăng nhập) */}
-            <Route
-                path="/login"
-                element={
-                    <GuestRoute>
-                        <LoginPage />
-                    </GuestRoute>
-                }
-            />
+        // Bọc AuthProvider ở ngoài cùng để toàn bộ App nhận diện được User/Admin
+        <AuthProvider>
+            <Routes>
+                {/* Tuyến đường cho khách (chưa đăng nhập) */}
+                <Route
+                    path="/login"
+                    element={
+                        <GuestRoute>
+                            <LoginPage />
+                        </GuestRoute>
+                    }
+                />
 
-            {/* Tuyến đường được bảo vệ (đã đăng nhập) */}
-            <Route
-                path="/"
-                element={
-                    <ProtectedRoute>
-                        <MainLayout />
-                    </ProtectedRoute>
-                }
-            >
-                {/* Các trang con lồng bên trong MainLayout */}
-                <Route index element={<DashboardPage />} /> 
-                <Route path="attendance" element={<AttendancePage />} />
-                <Route path="import" element={<ImportPage />} />
-                <Route path="employees" element={<EmployeePage />} />
-                <Route path="activity" element={<ActivityLogPage />} /> {/* <-- Đảm bảo dòng này tồn tại */}
-                <Route path="groups" element={<GroupPage />} />
-                <Route path="admin" element={<AdminPage />} />
-            </Route>
-            
-             {/* Nếu gõ 1 đường link không tồn tại, đá về trang chủ */}
-             <Route path="*" element={<Navigate to="/" replace />} />
+                {/* Tuyến đường được bảo vệ (đã đăng nhập) */}
+                <Route
+                    path="/"
+                    element={
+                        <ProtectedRoute>
+                            <MainLayout />
+                        </ProtectedRoute>
+                    }
+                >
+                    {/* Trang chủ mặc định vào Dashboard */}
+                    <Route index element={<Dashboard />} /> 
+                    
+                    {/* Các trang chức năng (Giữ nguyên như cũ) */}
+                    <Route path="attendance" element={<AttendancePage />} />
+                    <Route path="import" element={<ImportPage />} />
+                    <Route path="employees" element={<EmployeePage />} />
+                    <Route path="activity" element={<ActivityLogPage />} />
+                    
+                    {/* Các trang Admin */}
+                    <Route path="groups" element={<GroupPage />} />
+                    <Route path="admin" element={<AdminPage />} />
+                </Route>
+                
+                {/* Nếu gõ link sai -> Về trang chủ */}
+                <Route path="*" element={<Navigate to="/" replace />} />
 
-        </Routes>
+            </Routes>
+        </AuthProvider>
     );
 }
 
