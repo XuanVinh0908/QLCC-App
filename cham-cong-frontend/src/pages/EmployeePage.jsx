@@ -1,159 +1,365 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import ImportSection from '../components/ImportSection';
-import EmployeeEditModal from '../components/EmployeeEditModal';
 import { useAuth } from '../hooks/useAuth';
-import './EmployeePage.css';
-import '../components/AdminForms.css';
 
-function EmployeePage() {
-    // === STATE ===
-    const { user, isAdmin } = useAuth();
+const EmployeePage = () => {
+    const { user, isAdmin } = useAuth(); // Lấy thông tin user hiện tại
+
+    // --- STATE QUẢN LÝ DỮ LIỆU ---
     const [employees, setEmployees] = useState([]);
+    const [groups, setGroups] = useState([]);       // Danh sách Sở/Ban (UserGroups)
+    const [details, setDetails] = useState([]);     // Danh sách Phòng ban con (Detail_GroupUser)
+    
+    // --- STATE QUẢN LÝ FORM & UI ---
+    const [showModal, setShowModal] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [message, setMessage] = useState('');
-    const [newEmpId, setNewEmpId] = useState('');
-    const [newEmpName, setNewEmpName] = useState('');
-    const [editingEmployee, setEditingEmployee] = useState(null);
-    const [groups, setGroups] = useState([]);
-    const [userGroupInfo, setUserGroupInfo] = useState(null);
-    const [selectedGroup, setSelectedGroup] = useState('');
+    const [message, setMessage] = useState({ type: '', content: '' });
 
-    // === HÀM GỌI API ===
+    // Dữ liệu Form
+    const [formData, setFormData] = useState({
+        EmployeeID: null,
+        SourceEmployeeID: '', // Mã NV
+        FullName: '',
+        Position: '',         // (Mới) Chức vụ
+        UserGroupID: '',      // Sở/Ban
+        DetailID: '',         // (Mới) Phòng ban
+        Phone: '',
+        Email: '',
+        Address: '',
+        Gender: 'Nam'
+    });
+
+    // --- 1. LOAD DỮ LIỆU BAN ĐẦU ---
     useEffect(() => {
-        const fetchData = async () => {
-             const token = localStorage.getItem('token');
-             const headers = { Authorization: `Bearer ${token}` };
-             try {
-                 const groupsRes = await axios.get('/api/groups', { headers });
-                 setGroups(groupsRes.data);
-                 if (user && user.userGroupID) {
-                    const currentUserGroup = groupsRes.data.find(g => g.UserGroupID === user.userGroupID);
-                    setUserGroupInfo(currentUserGroup);
-                    if (!isAdmin && currentUserGroup) {
-                        setSelectedGroup(String(currentUserGroup.UserGroupID));
-                    } else if (isAdmin) { setSelectedGroup('all'); }
-                 } else if (isAdmin) { setSelectedGroup('all'); }
-             } catch (err) { console.error('Lỗi tải dữ liệu nhóm:', err); setError('Không thể tải danh sách nhóm.'); }
-         };
-         fetchData();
-    }, [user, isAdmin]);
+        fetchEmployees();
+        fetchGroups();
+    }, []);
 
-    const fetchEmployees = async (groupID = selectedGroup) => {
-        if (!groupID) return; // Đảm bảo selectedGroup đã được set
-        setIsLoading(true); setError('');
+    // Load danh sách nhân viên
+    const fetchEmployees = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await axios.get('/api/employees', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setEmployees(res.data);
+        } catch (err) {
+            console.error("Lỗi tải NV:", err);
+        }
+    };
+
+    // Load danh sách nhóm cha (Sở/Ban)
+    const fetchGroups = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await axios.get('/api/groups', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setGroups(res.data);
+        } catch (err) {
+            console.error("Lỗi tải nhóm:", err);
+        }
+    };
+
+    // --- 2. LOGIC CASCADING DROPDOWN (CHỌN SỞ -> HIỆN PHÒNG) ---
+    // Hàm lấy phòng ban con dựa theo ID nhóm cha
+    const fetchDetailsByGroup = async (groupID) => {
+        if (!groupID) {
+            setDetails([]);
+            return;
+        }
+        try {
+            const token = localStorage.getItem('token');
+            // Gọi API mới chúng ta vừa tạo ở Backend
+            const res = await axios.get(`/api/details/by-group/${groupID}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setDetails(res.data);
+        } catch (err) {
+            console.error("Lỗi tải phòng ban chi tiết:", err);
+            setDetails([]);
+        }
+    };
+
+    // Khi người dùng chọn Nhóm cha trên Form
+    const handleGroupChange = (e) => {
+        const newGroupID = e.target.value;
+        setFormData({ 
+            ...formData, 
+            UserGroupID: newGroupID, 
+            DetailID: '' // Reset phòng ban con khi đổi nhóm cha
+        });
+        
+        // Gọi API lấy danh sách phòng ban mới
+        fetchDetailsByGroup(newGroupID);
+    };
+
+    // --- 3. XỬ LÝ FORM ---
+    const handleInputChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    // Mở Form Thêm mới
+    const handleAddNew = () => {
+        setIsEditMode(false);
+        setFormData({
+            EmployeeID: null, SourceEmployeeID: '', FullName: '', Position: '',
+            UserGroupID: '', DetailID: '', Phone: '', Email: '', Address: '', Gender: 'Nam'
+        });
+        setDetails([]); // Reset danh sách phòng ban
+        setMessage({ type: '', content: '' });
+        setShowModal(true);
+    };
+
+    // Mở Form Sửa
+    const handleEdit = (emp) => {
+        setIsEditMode(true);
+        setFormData({
+            EmployeeID: emp.EmployeeID,
+            SourceEmployeeID: emp.SourceEmployeeID || emp.EmployeeCode, // Fix lỗi tên cột
+            FullName: emp.FullName,
+            Position: emp.Position || '',
+            UserGroupID: emp.UserGroupID,
+            DetailID: emp.DetailID || '',
+            Phone: emp.Phone || '',
+            Email: emp.Email || '',
+            Address: emp.Address || '',
+            Gender: emp.Gender || 'Nam'
+        });
+        
+        // QUAN TRỌNG: Phải load danh sách phòng ban của user đó ngay lập tức
+        if (emp.UserGroupID) {
+            fetchDetailsByGroup(emp.UserGroupID);
+        }
+        
+        setMessage({ type: '', content: '' });
+        setShowModal(true);
+    };
+
+    // Submit Form (Thêm hoặc Sửa)
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
         const token = localStorage.getItem('token');
-        const params = {};
-         if ((isAdmin || (userGroupInfo && userGroupInfo.ParentGroupID === null)) && groupID !== 'all') {
-             if (!isAdmin && groupID === 'all' && userGroupInfo?.ParentGroupID === null) {
-                 params.groupID = user.userGroupID; // 'all' của Parent Leader là ID của họ
-             } else if (groupID !== 'all') { // Gửi ID nếu chọn cụ thể
-                  const actualGroupID = groupID.includes('_only') ? groupID.split('_')[0] : groupID;
-                  params.groupID = actualGroupID;
-             }
-         }
 
         try {
-            const response = await axios.get('/api/employees', { headers: { 'Authorization': `Bearer ${token}` }, params: params });
-            setEmployees(response.data);
-        } catch (err) { setError('Không thể tải danh sách nhân viên'); }
-        setIsLoading(false);
+            if (isEditMode) {
+                // GỌI API SỬA (PUT)
+                // Lưu ý: Không gửi HexFace ở đây để tránh làm mất dữ liệu mặt
+                await axios.put(`/api/employees/${formData.EmployeeID}`, formData, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setMessage({ type: 'success', content: 'Cập nhật thành công!' });
+            } else {
+                // GỌI API THÊM (POST)
+                await axios.post('/api/employees', formData, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setMessage({ type: 'success', content: 'Thêm mới thành công!' });
+                // Reset form để nhập tiếp
+                setFormData({ ...formData, SourceEmployeeID: '', FullName: '', Position: '' });
+            }
+            
+            fetchEmployees(); // Tải lại danh sách
+            if(isEditMode) setTimeout(() => setShowModal(false), 1500); // Đóng modal sau 1.5s nếu là sửa
+
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || 'Lỗi hệ thống';
+            setMessage({ type: 'danger', content: errorMsg });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
-    useEffect(() => {
-        if (selectedGroup) { fetchEmployees(selectedGroup); }
-    }, [selectedGroup]); // Bỏ isAdmin vì fetchGroups đã xử lý
-
-    const handleAddEmployee = async (e) => {
-        e.preventDefault(); setError(''); setMessage(''); const token = localStorage.getItem('token');
+    // Xóa nhân viên
+    const handleDelete = async (id) => {
+        if (!window.confirm("Bạn có chắc chắn muốn xóa nhân viên này?")) return;
         try {
-            await axios.post( '/api/employees', { SourceEmployeeID: newEmpId, FullName: newEmpName }, { headers: { 'Authorization': `Bearer ${token}` } });
-            setMessage('Thêm nhân viên thành công!'); setNewEmpId(''); setNewEmpName(''); fetchEmployees();
-        } catch (err) { setError(err.response?.data?.message || 'Lỗi khi thêm nhân viên'); }
+            const token = localStorage.getItem('token');
+            await axios.delete(`/api/employees/${id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchEmployees();
+        } catch (err) {
+            alert('Lỗi khi xóa nhân viên');
+        }
     };
-
-    const handleSaveEmployee = async (employeeID, updatedData) => {
-        setError(''); setMessage(''); const token = localStorage.getItem('token');
-        try {
-            await axios.put(`/api/employees/${employeeID}`, updatedData, { headers: { 'Authorization': `Bearer ${token}` } });
-            setMessage('Cập nhật thành công!'); setEditingEmployee(null); fetchEmployees();
-        } catch (err) { setError(err.response?.data?.message || 'Lỗi khi cập nhật'); }
-    };
-
-    const handleRemoveEmployee = async (employeeID) => {
-        if (!window.confirm('Bạn có chắc muốn xóa nhân viên này khỏi nhóm? (NV sẽ thành "chưa gán")')) return;
-        setError(''); setMessage(''); const token = localStorage.getItem('token');
-        try {
-            await axios.put( `/api/employees/remove/${employeeID}`, {}, { headers: { 'Authorization': `Bearer ${token}` } });
-            setMessage('Xóa khỏi nhóm thành công!'); fetchEmployees();
-        } catch (err) { setError(err.response?.data?.message || 'Lỗi khi xóa'); }
-    };
-
-    // === RENDER ===
-    const isParentGroupLeader = !isAdmin && userGroupInfo && userGroupInfo.ParentGroupID === null;
-    const showGroupFilter = isAdmin || isParentGroupLeader;
-    const childGroups = isParentGroupLeader ? groups.filter(g => g.ParentGroupID === user.userGroupID) : [];
 
     return (
-        <div className="employee-page-container">
-            {/* CỘT 1: DANH SÁCH NHÂN VIÊN */}
-            <div className="employee-list-section">
-                 <h3>
-                     Quản lý Nhân viên
-                     {showGroupFilter && (
-                         <select value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)} style={{ marginLeft: '1rem', fontSize: '0.9rem', padding: '5px' }}>
-                            {isAdmin && <option value="all">-- Tất cả Nhóm --</option>}
-                            {isParentGroupLeader && <option value={String(user.userGroupID)}>-- Nhóm của tôi & cấp dưới --</option>}
-                            {isParentGroupLeader && <option value={user.userGroupID + '_only'}>-- Chỉ Nhóm của tôi --</option>}
-                            {isAdmin && groups.sort((a,b)=>a.GroupName.localeCompare(b.GroupName)).map(group => ( <option key={group.UserGroupID} value={String(group.UserGroupID)}>{group.GroupName}</option> ))}
-                            {isParentGroupLeader && childGroups.sort((a,b)=>a.GroupName.localeCompare(b.GroupName)).map(group => ( <option key={group.UserGroupID} value={String(group.UserGroupID)}>{group.GroupName}</option> ))}
-                         </select>
-                     )}
-                 </h3>
-                 {isLoading && <p>Đang tải...</p>}
-                 <table className="employee-table">
-                     <thead>
-                         <tr>
-                             <th>Mã Nhân viên</th>
-                             <th>Họ và Tên</th>
-                             {/* --- THAY ĐỔI: Bỏ điều kiện isAdmin --- */}
-                             <th>Tên Nhóm</th>
-                             {/* --- KẾT THÚC THAY ĐỔI --- */}
-                             <th>Hành động</th>
-                         </tr>
-                     </thead>
-                     <tbody>
-                         {employees.map(emp => (
-                             <tr key={emp.EmployeeID}>
-                                 <td>{emp.SourceEmployeeID}</td>
-                                 <td>{emp.FullName}</td>
-                                 {/* --- THAY ĐỔI: Bỏ điều kiện isAdmin --- */}
-                                 <td>{emp.GroupName || '(Chưa gán)'}</td>
-                                 {/* --- KẾT THÚC THAY ĐỔI --- */}
-                                 <td className="action-buttons">
-                                     <button className="btn-edit" onClick={() => setEditingEmployee(emp)}>Sửa</button>
-                                     <button className="btn-remove" onClick={() => handleRemoveEmployee(emp.EmployeeID)}>Xóa</button>
-                                 </td>
-                             </tr>
-                         ))}
-                     </tbody>
-                 </table>
-                 {error && <p className="error-message" style={{ padding: '1rem' }}>{error}</p>}
-                 {message && <p className="success-message" style={{ padding: '1rem' }}>{message}</p>}
+        <div className="container-fluid p-4">
+            {/* --- HEADER --- */}
+            <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+                <h3 className="fw-bold text-dark m-0">
+                    <i className="bi bi-people-fill me-2"></i> Quản lý Nhân sự
+                </h3>
+                <button className="btn btn-primary shadow-sm fw-bold" onClick={handleAddNew}>
+                    <i className="bi bi-person-plus-fill me-2"></i> Thêm nhân viên
+                </button>
             </div>
 
-            {/* CỘT 2: CÁC FORM */}
-            <div className="employee-forms-section">
-                <div className="admin-form-section"> <h3>Thêm mới (vào nhóm của bạn)</h3> <form onSubmit={handleAddEmployee}> <div className="form-group"> <label htmlFor="newEmpId">Mã NV</label> <input type="text" id="newEmpId" value={newEmpId} onChange={(e) => setNewEmpId(e.target.value)} required/> </div> <div className="form-group"> <label htmlFor="newEmpName">Họ tên</label> <input type="text" id="newEmpName" value={newEmpName} onChange={(e) => setNewEmpName(e.target.value)} required/> </div> <button type="submit" className="admin-button">Thêm</button> </form> </div>
-                <ImportSection title="Import Nhân viên từ Excel" apiUrl="/api/import/employees" requiredColumns="SourceEmployeeID, FullName, UserGroupID" onImportSuccess={fetchEmployees}/>
+            {/* --- BẢNG DANH SÁCH --- */}
+            <div className="card shadow-sm border-0 rounded-4">
+                <div className="card-body p-0">
+                    <div className="table-responsive">
+                        <table className="table table-hover align-middle mb-0">
+                            <thead className="bg-light text-secondary">
+                                <tr>
+                                    <th className="ps-4">Mã NV</th>
+                                    <th>Họ và Tên</th>
+                                    <th>Chức vụ</th>
+                                    <th>Phòng ban</th>
+                                    <th>Đơn vị (Sở/Ban)</th>
+                                    <th className="text-center">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {employees.map((emp) => (
+                                    <tr key={emp.EmployeeID}>
+                                        <td className="ps-4 fw-bold text-primary">{emp.SourceEmployeeID || emp.EmployeeCode}</td>
+                                        <td>
+                                            <div className="fw-bold">{emp.FullName}</div>
+                                            <small className="text-muted">{emp.Gender} - {emp.Phone}</small>
+                                        </td>
+                                        <td>
+                                            {emp.Position ? (
+                                                <span className="badge bg-info text-dark bg-opacity-10 border border-info px-2 py-1">
+                                                    {emp.Position}
+                                                </span>
+                                            ) : <span className="text-muted small">-</span>}
+                                        </td>
+                                        <td>
+                                            {emp.DetailName || <span className="text-muted small fs-7">Chưa xếp phòng</span>}
+                                        </td>
+                                        <td>
+                                            <span className="fw-bold text-secondary" style={{fontSize: '0.9rem'}}>
+                                                {emp.GroupName}
+                                            </span>
+                                        </td>
+                                        <td className="text-center">
+                                            <button className="btn btn-sm btn-outline-primary me-2 border-0 bg-light" onClick={() => handleEdit(emp)}>
+                                                <i className="bi bi-pencil-square"></i>
+                                            </button>
+                                            <button className="btn btn-sm btn-outline-danger border-0 bg-light" onClick={() => handleDelete(emp.EmployeeID)}>
+                                                <i className="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {employees.length === 0 && (
+                                    <tr>
+                                        <td colSpan="6" className="text-center py-5 text-muted">
+                                            Chưa có dữ liệu nhân viên.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
-            {/* Modal Sửa */}
-            {editingEmployee && (
-                <EmployeeEditModal employee={editingEmployee} groups={groups} onClose={() => setEditingEmployee(null)} onSave={handleSaveEmployee}/>
+            {/* --- MODAL THÊM / SỬA (Custom đơn giản dùng CSS Bootstrap) --- */}
+            {showModal && (
+                <div className="modal d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
+                    <div className="modal-dialog modal-lg modal-dialog-centered">
+                        <div className="modal-content rounded-4 border-0 shadow">
+                            <div className="modal-header bg-primary text-white">
+                                <h5 className="modal-title fw-bold">
+                                    {isEditMode ? 'Cập nhật thông tin' : 'Thêm nhân viên mới'}
+                                </h5>
+                                <button type="button" className="btn-close btn-close-white" onClick={() => setShowModal(false)}></button>
+                            </div>
+                            <div className="modal-body p-4">
+                                {message.content && (
+                                    <div className={`alert alert-${message.type} mb-3 shadow-sm`}>{message.content}</div>
+                                )}
+                                
+                                <form onSubmit={handleSubmit}>
+                                    <div className="row g-3">
+                                        {/* Cột 1: Thông tin cơ bản */}
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Mã Nhân viên <span className="text-danger">*</span></label>
+                                            <input type="text" className="form-control" name="SourceEmployeeID" value={formData.SourceEmployeeID} onChange={handleInputChange} required placeholder="VD: NV001" />
+                                        </div>
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Họ và Tên <span className="text-danger">*</span></label>
+                                            <input type="text" className="form-control" name="FullName" value={formData.FullName} onChange={handleInputChange} required placeholder="VD: Nguyễn Văn A" />
+                                        </div>
+
+                                        {/* Cột 2: Chức vụ & Giới tính */}
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Chức vụ (Mới)</label>
+                                            <input type="text" className="form-control" name="Position" value={formData.Position} onChange={handleInputChange} placeholder="VD: Trưởng phòng, Chuyên viên..." />
+                                        </div>
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Giới tính</label>
+                                            <select className="form-select" name="Gender" value={formData.Gender} onChange={handleInputChange}>
+                                                <option value="Nam">Nam</option>
+                                                <option value="Nữ">Nữ</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Cột 3: Đơn vị & Phòng ban (QUAN TRỌNG) */}
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Đơn vị / Sở Ban <span className="text-danger">*</span></label>
+                                            <select 
+                                                className="form-select border-primary" 
+                                                name="UserGroupID" 
+                                                value={formData.UserGroupID} 
+                                                onChange={handleGroupChange} // Gọi hàm load phòng ban con
+                                                required
+                                            >
+                                                <option value="">-- Chọn đơn vị --</option>
+                                                {groups.map(g => (
+                                                    <option key={g.UserGroupID} value={g.UserGroupID}>{g.GroupName}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Phòng ban trực thuộc (Mới)</label>
+                                            <select 
+                                                className="form-select" 
+                                                name="DetailID" 
+                                                value={formData.DetailID} 
+                                                onChange={handleInputChange}
+                                                disabled={!formData.UserGroupID} // Khóa nếu chưa chọn Sở
+                                            >
+                                                <option value="">-- Chọn phòng ban --</option>
+                                                {details.map(d => (
+                                                    <option key={d.DetailID} value={d.DetailID}>{d.DetailName}</option>
+                                                ))}
+                                            </select>
+                                            {formData.UserGroupID && details.length === 0 && (
+                                                <div className="form-text text-warning small">Đơn vị này chưa khai báo phòng ban con.</div>
+                                            )}
+                                        </div>
+
+                                        {/* Cột 4: Liên hệ */}
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Số điện thoại</label>
+                                            <input type="text" className="form-control" name="Phone" value={formData.Phone} onChange={handleInputChange} />
+                                        </div>
+                                        <div className="col-md-6">
+                                            <label className="form-label fw-bold small text-secondary">Email</label>
+                                            <input type="email" className="form-control" name="Email" value={formData.Email} onChange={handleInputChange} />
+                                        </div>
+                                    </div>
+
+                                    <div className="d-flex justify-content-end mt-4 pt-3 border-top gap-2">
+                                        <button type="button" className="btn btn-light" onClick={() => setShowModal(false)}>Hủy bỏ</button>
+                                        <button type="submit" className="btn btn-primary fw-bold px-4" disabled={isLoading}>
+                                            {isLoading ? 'Đang lưu...' : (isEditMode ? 'Cập nhật' : 'Thêm mới')}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
-}
+};
+
 export default EmployeePage;

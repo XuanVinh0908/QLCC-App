@@ -4,91 +4,86 @@ const { protect } = require('../middleware/authMiddleware.js');
 
 const router = express.Router();
 
-// Hàm trợ giúp (Không đổi)
+// --- GIỮ NGUYÊN HÀM TRỢ GIÚP CỦA BẠN ---
 const getAllowedGroupIDs = async (userGroupID) => {
     const [userGroupInfo] = await db.query('SELECT ParentGroupID FROM UserGroups WHERE UserGroupID = ?', [userGroupID]);
     if (userGroupInfo.length === 0) return [];
     if (userGroupInfo[0].ParentGroupID === null) {
+        // Là nhóm cha -> Lấy chính nó và các nhóm con
         const [subGroups] = await db.query('SELECT UserGroupID FROM UserGroups WHERE ParentGroupID = ?', [userGroupID]);
         return [userGroupID, ...subGroups.map(g => g.UserGroupID)];
     } else {
+        // Là nhóm con -> Chỉ lấy chính nó
         return [userGroupID];
     }
 };
 
-// API 1: (READ) LẤY DANH SÁCH NHÂN VIÊN (SỬA LOGIC LỌC)
+// --- API 1: (READ) LẤY DANH SÁCH (Đã fix lỗi biến sql/query) ---
 router.get('/', protect, async (req, res) => {
     try {
         const { userGroupID, role } = req.user;
-        const { groupID: queryGroupID } = req.query; // groupID từ frontend
+        const { groupID: queryGroupID } = req.query; 
 
-        let query = `
-            SELECT
-                e.EmployeeID,
-                e.SourceEmployeeID,
-                e.FullName,
-                ug.GroupName
-            FROM Employees AS e
-            LEFT JOIN UserGroups AS ug ON e.UserGroupID = ug.UserGroupID
+        // 1. CÂU SQL CƠ BẢN (Đã thêm Position, DetailID, hex-face)
+        let sql = `
+            SELECT 
+                e.*, 
+                g.GroupName,
+                d.DetailName, -- Tên phòng ban chi tiết
+                e.Position    -- Chức vụ
+            FROM employees e
+            LEFT JOIN UserGroups g ON e.UserGroupID = g.UserGroupID
+            LEFT JOIN detail_groupuser d ON e.DetailID = d.DetailID
         `;
+        
         const params = [];
         let whereConditions = [];
 
-        // --- SỬA LOGIC LỌC NHÓM ---
+        // 2. LOGIC LỌC NHÓM (GIỮ NGUYÊN LOGIC CỦA BẠN)
         if (role === 'Admin') {
             if (queryGroupID && queryGroupID !== 'all') {
-                // Admin lọc nhóm cụ thể (cha hoặc con)
-                const targetGroupID = parseInt(queryGroupID);
-                whereConditions.push('e.UserGroupID = ?'); // Chỉ lấy đúng nhóm đó
-                params.push(targetGroupID);
+                whereConditions.push('e.UserGroupID = ?');
+                params.push(parseInt(queryGroupID));
             }
-            // Nếu Admin chọn 'all', không lọc theo nhóm
-        } else { // User thường (Cha hoặc Con)
-            const allowedIDs = await getAllowedGroupIDs(userGroupID); // Lấy các ID được phép xem
+        } else { 
+            // User thường
+            const allowedIDs = await getAllowedGroupIDs(userGroupID);
 
             if (allowedIDs.length > 0) {
                  const [userGroupInfo] = await db.query('SELECT ParentGroupID FROM UserGroups WHERE UserGroupID = ?', [userGroupID]);
                  const isParentGroupLeader = userGroupInfo[0]?.ParentGroupID === null;
-
-                 // Kiểm tra xem user có đang lọc không (queryGroupID khác giá trị mặc định)
                  const isFiltering = queryGroupID && queryGroupID !== String(userGroupID);
 
                  if (isParentGroupLeader && isFiltering) {
-                      // Trưởng nhóm cha đang lọc
                       if (queryGroupID === (userGroupID + '_only')) {
-                           // Lọc chỉ nhóm cha
                            whereConditions.push('e.UserGroupID = ?');
                            params.push(userGroupID);
                       } else {
-                           // Lọc nhóm con cụ thể (phải kiểm tra xem có thuộc quyền ko)
                            const targetChildID = parseInt(queryGroupID);
                            if (allowedIDs.includes(targetChildID) && targetChildID !== userGroupID) {
                                 whereConditions.push('e.UserGroupID = ?');
                                 params.push(targetChildID);
                            } else {
-                                // Nếu chọn nhóm không hợp lệ -> trả rỗng
-                                whereConditions.push('1 = 0');
+                                whereConditions.push('1 = 0'); // Không có quyền
                            }
                       }
                  } else {
-                      // User không lọc HOẶC là nhóm con -> Lấy theo allowedIDs
                       whereConditions.push(`e.UserGroupID IN (?)`);
                       params.push(allowedIDs);
                  }
             } else {
-                whereConditions.push('1 = 0'); // Không có quyền xem nhóm nào
+                whereConditions.push('1 = 0'); 
             }
         }
-        // --- KẾT THÚC SỬA LOGIC LỌC NHÓM ---
 
-
+        // 3. NỐI ĐIỀU KIỆN (Fix lỗi biến 'query' thành 'sql')
         if (whereConditions.length > 0) {
-             query += ' WHERE ' + whereConditions.join(' AND ');
+             sql += ' WHERE ' + whereConditions.join(' AND ');
         }
 
-        query += ' ORDER BY ug.GroupName ASC, e.FullName ASC';
+        sql += ' ORDER BY g.GroupName ASC, e.FullName ASC';
 
-        const [employees] = await db.query(query, params);
+        const [employees] = await db.query(sql, params);
         res.json(employees);
 
     } catch (err) {
@@ -97,69 +92,159 @@ router.get('/', protect, async (req, res) => {
     }
 });
 
-// API 2: (CREATE) THÊM MỚI (Giữ nguyên)
-router.post('/', protect, async (req, res) => { /* ... */ });
- router.post('/', protect, async (req, res) => {
-     const { SourceEmployeeID, FullName } = req.body;
-     const userGroupID = req.user.userGroupID;
-     if (!SourceEmployeeID || !FullName) return res.status(400).json({ message: 'Vui lòng điền đủ Mã NV và Họ tên' });
-      try {
-        const [existing] = await db.query('SELECT EmployeeID FROM Employees WHERE SourceEmployeeID = ?', [SourceEmployeeID]);
+// --- API 2: (CREATE) THÊM MỚI (Đã bổ sung cột mới) ---
+router.post('/', protect, async (req, res) => {
+    try {
+        // Nhận thêm: Position, DetailID, Gender, Phone, Email, Address, HexFace
+        const { 
+            SourceEmployeeID, FullName, Position, 
+            UserGroupID, DetailID, 
+            Gender, Phone, Email, Address, HexFace 
+        } = req.body;
+
+        // Nếu User thường không gửi UserGroupID, lấy mặc định của họ
+        const finalGroupID = (req.user.role === 'Admin' && UserGroupID) ? UserGroupID : req.user.userGroupID;
+
+        if (!SourceEmployeeID || !FullName) {
+            return res.status(400).json({ message: 'Vui lòng điền Mã NV và Họ tên' });
+        }
+
+        // Check trùng mã
+        const [existing] = await db.query('SELECT EmployeeID FROM employees WHERE SourceEmployeeID = ?', [SourceEmployeeID]);
         if (existing.length > 0) return res.status(400).json({ message: 'Mã nhân viên này đã tồn tại' });
-        const query = 'INSERT INTO Employees (SourceEmployeeID, FullName, UserGroupID) VALUES (?, ?, ?)';
-        const [result] = await db.query(query, [SourceEmployeeID, FullName, userGroupID]);
-        res.status(201).json({ message: 'Thêm nhân viên thành công', newEmployee: { EmployeeID: result.insertId, SourceEmployeeID, FullName } });
-    } catch (err) { console.error(err); res.status(500).json({ message: 'Lỗi server' }); }
+
+        const sql = `
+            INSERT INTO employees 
+            (SourceEmployeeID, FullName, Position, UserGroupID, DetailID, Gender, Phone, Email, Address, \`hex-face\`) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        
+        const [result] = await db.query(sql, [
+            SourceEmployeeID, FullName, 
+            Position || null, 
+            finalGroupID, 
+            DetailID || null, 
+            Gender || null, Phone || null, Email || null, Address || null, 
+            HexFace || null
+        ]);
+
+        res.status(201).json({ 
+            message: 'Thêm nhân viên thành công', 
+            newEmployee: { EmployeeID: result.insertId, SourceEmployeeID, FullName } 
+        });
+    } catch (err) { 
+        console.error(err); 
+        res.status(500).json({ message: 'Lỗi server' }); 
+    }
 });
 
-
-// API 3: (UPDATE) SỬA NHÂN VIÊN (Giữ nguyên)
-router.put('/:id', protect, async (req, res) => { /* ... */ });
- router.put('/:id', protect, async (req, res) => {
+// --- API 3: (UPDATE) SỬA NHÂN VIÊN (Đã bổ sung cột mới) ---
+router.put('/:id', protect, async (req, res) => {
     const { id } = req.params;
-    const { SourceEmployeeID, FullName, UserGroupID: newUserGroupID } = req.body;
+    const { 
+        SourceEmployeeID, FullName, Position, 
+        UserGroupID: newUserGroupID, DetailID,
+        Gender, Phone, Email, Address, HexFace 
+    } = req.body;
+    
     const { userGroupID, role } = req.user;
-    if (!SourceEmployeeID || !FullName || !newUserGroupID) return res.status(400).json({ message: 'Vui lòng điền đủ Mã NV, Họ tên và chọn Nhóm mới' });
+
+    if (!SourceEmployeeID || !FullName || !newUserGroupID) {
+        return res.status(400).json({ message: 'Thiếu thông tin bắt buộc' });
+    }
+
     try {
-        const [existing] = await db.query('SELECT EmployeeID FROM Employees WHERE SourceEmployeeID = ? AND EmployeeID != ?', [SourceEmployeeID, id]);
-        if (existing.length > 0) return res.status(400).json({ message: 'Mã nhân viên này đã bị trùng với một người khác' });
-        const [groupExists] = await db.query('SELECT UserGroupID FROM UserGroups WHERE UserGroupID = ?', [newUserGroupID]);
-        if (groupExists.length === 0) return res.status(400).json({ message: 'Nhóm mới được chọn không hợp lệ.' });
-        let query = 'UPDATE Employees SET SourceEmployeeID = ?, FullName = ?, UserGroupID = ? WHERE EmployeeID = ?';
-        const params = [SourceEmployeeID, FullName, newUserGroupID, id];
+        // Check trùng mã với người khác
+        const [existing] = await db.query('SELECT EmployeeID FROM employees WHERE SourceEmployeeID = ? AND EmployeeID != ?', [SourceEmployeeID, id]);
+        if (existing.length > 0) return res.status(400).json({ message: 'Mã nhân viên đã bị trùng' });
+
+        let sql = `
+            UPDATE employees SET 
+                SourceEmployeeID = ?, 
+                FullName = ?, 
+                Position = ?, 
+                UserGroupID = ?, 
+                DetailID = ?,
+                Gender = ?, Phone = ?, Email = ?, Address = ?
+                -- Lưu ý: Không update hex-face ở đây nếu không gửi lên (để tránh mất dữ liệu)
+        `;
+        
+        const params = [
+            SourceEmployeeID, FullName, 
+            Position || null, 
+            newUserGroupID, 
+            DetailID || null,
+            Gender || null, Phone || null, Email || null, Address || null
+        ];
+
+        // Chỉ update HexFace nếu có gửi lên (để tránh Web làm mất dữ liệu của Tablet)
+        if (HexFace !== undefined) {
+            sql += `, \`hex-face\` = ?`;
+            params.push(HexFace);
+        }
+
+        sql += ` WHERE EmployeeID = ?`;
+        params.push(id);
+
+        // --- LOGIC PHÂN QUYỀN CŨ (GIỮ NGUYÊN) ---
         if (role !== 'Admin') {
             const allowedIDs = await getAllowedGroupIDs(userGroupID);
             if (allowedIDs.length > 0) {
-                query += ` AND UserGroupID IN (?)`; // Kiểm tra nhóm CŨ
-                params.push(allowedIDs);
-                 if (!allowedIDs.includes(parseInt(newUserGroupID))) return res.status(403).json({ message: 'Bạn không có quyền chuyển nhân viên sang nhóm này.' });
-            } else { query += ' AND 1 = 0'; }
+                // Chỉ được sửa nhân viên thuộc nhóm mình quản lý
+                sql += ` AND UserGroupID IN (?)`; 
+                // Cần push allowedIDs vào params NHƯNG phải để ý thứ tự params
+                // SQL UPDATE có WHERE EmployeeID = ? ở cuối, rồi mới đến AND UserGroupID...
+                // Kỹ thuật: Đổi thứ tự WHERE
+                
+                // (Cách fix đơn giản nhất để query chạy đúng với params):
+                // Ta check quyền TRƯỚC khi chạy UPDATE
+                if (!allowedIDs.includes(parseInt(newUserGroupID))) {
+                    return res.status(403).json({ message: 'Không thể chuyển nhân viên sang nhóm bạn không quản lý' });
+                }
+                
+                // Check xem nhân viên hiện tại có thuộc nhóm quản lý không
+                const [currentEmp] = await db.query('SELECT UserGroupID FROM employees WHERE EmployeeID = ?', [id]);
+                if (currentEmp.length === 0 || !allowedIDs.includes(currentEmp[0].UserGroupID)) {
+                    return res.status(403).json({ message: 'Bạn không có quyền sửa nhân viên này' });
+                }
+            } else { 
+                return res.status(403).json({ message: 'Không có quyền' }); 
+            }
         }
-        const [result] = await db.query(query, params);
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy nhân viên hoặc bạn không có quyền sửa' });
-        res.json({ message: 'Cập nhật nhân viên thành công' });
+        // --- KẾT THÚC LOGIC PHÂN QUYỀN ---
+
+        const [result] = await db.query(sql, params);
+        
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy NV hoặc lỗi cập nhật' });
+        res.json({ message: 'Cập nhật thành công' });
+
     } catch (err) { console.error(err); res.status(500).json({ message: 'Lỗi server' }); }
 });
 
-
-// API 4: (DELETE) XÓA KHỎI NHÓM (Giữ nguyên)
-router.put('/remove/:id', protect, async (req, res) => { /* ... */ });
- router.put('/remove/:id', protect, async (req, res) => {
+// --- API 4: XÓA NHÂN VIÊN (Dùng DELETE chuẩn thay vì remove khỏi nhóm) ---
+router.delete('/:id', protect, async (req, res) => {
     const { id } = req.params;
     const { userGroupID, role } = req.user;
+
     try {
-        let query = 'UPDATE Employees SET UserGroupID = NULL WHERE EmployeeID = ?';
+        let sql = 'DELETE FROM employees WHERE EmployeeID = ?';
         const params = [id];
+
         if (role !== 'Admin') {
             const allowedIDs = await getAllowedGroupIDs(userGroupID);
-            if (allowedIDs.length > 0) { query += ` AND UserGroupID IN (?)`; params.push(allowedIDs); }
-            else { query += ' AND 1 = 0'; }
+            if (allowedIDs.length > 0) {
+                sql += ` AND UserGroupID IN (?)`;
+                params.push(allowedIDs);
+            } else {
+                return res.status(403).json({ message: 'Không có quyền xóa' });
+            }
         }
-        const [result] = await db.query(query, params);
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy nhân viên hoặc bạn không có quyền xóa' });
-        res.json({ message: 'Xóa nhân viên khỏi nhóm thành công' });
+
+        const [result] = await db.query(sql, params);
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Không tìm thấy nhân viên hoặc không có quyền xóa' });
+        
+        res.json({ message: 'Đã xóa nhân viên vĩnh viễn' });
     } catch (err) { console.error(err); res.status(500).json({ message: 'Lỗi server' }); }
 });
-
 
 module.exports = router;

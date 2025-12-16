@@ -10,6 +10,7 @@ const attendanceRoutes = require('./routes/attendance.js');
 const groupRoutes = require('./routes/groups.js');
 const employeeRoutes = require('./routes/employees.js');
 const activityRoutes = require('./routes/activity.js'); // <-- 1. IMPORT FILE MỚI
+const detailsRoute = require('./routes/details'); // <--- THÊM DÒNG NÀY
 
 // Khởi tạo app
 // --- 1. IMPORT ROUTE TABLET MỚI ---
@@ -32,6 +33,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/groups', groupRoutes);
+// --- THÊM DÒNG DƯỚI ĐÂY ---
+app.use('/api/details', detailsRoute);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/activity', activityRoutes); // <-- 2. SỬ DỤNG ROUTE MỚI
 // --- 2. SỬ DỤNG ROUTE TABLET (Gắn vào root) ---
